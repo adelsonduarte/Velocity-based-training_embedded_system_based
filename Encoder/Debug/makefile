@@ -38,34 +38,34 @@ $(wildcard ../makefile.init) \
 $(wildcard ../makefile.targets) \
 
 
-BUILD_ARTIFACT_NAME := Encoder
+BUILD_ARTIFACT_NAME := Encoder_Modulado
 BUILD_ARTIFACT_EXTENSION := elf
 BUILD_ARTIFACT_PREFIX :=
 BUILD_ARTIFACT := $(BUILD_ARTIFACT_PREFIX)$(BUILD_ARTIFACT_NAME)$(if $(BUILD_ARTIFACT_EXTENSION),.$(BUILD_ARTIFACT_EXTENSION),)
 
 # Add inputs and outputs from these tool invocations to the build variables 
 EXECUTABLES += \
-Encoder.elf \
+Encoder_Modulado.elf \
 
 MAP_FILES += \
-Encoder.map \
+Encoder_Modulado.map \
 
 SIZE_OUTPUT += \
 default.size.stdout \
 
 OBJDUMP_LIST += \
-Encoder.list \
+Encoder_Modulado.list \
 
 
 # All Target
 all: main-build
 
 # Main-build Target
-main-build: Encoder.elf secondary-outputs
+main-build: Encoder_Modulado.elf secondary-outputs
 
 # Tool invocations
-Encoder.elf Encoder.map: $(OBJS) $(USER_OBJS) G:\Meu\ Drive\CEFISE\ -\ Biotecnologia\Trabalho_Encoder\Encoder\STM32F103C8TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "Encoder.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"G:\Meu Drive\CEFISE - Biotecnologia\Trabalho_Encoder\Encoder\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Encoder.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+Encoder_Modulado.elf Encoder_Modulado.map: $(OBJS) $(USER_OBJS) G:\Meu\ Drive\CEFISE\ -\ Biotecnologia\Ajuste\ de\ FW\ -\ TDD\ e\ OOP\Encoder_Modulado\STM32F103C8TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "Encoder_Modulado.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"G:\Meu Drive\CEFISE - Biotecnologia\Ajuste de FW - TDD e OOP\Encoder_Modulado\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Encoder_Modulado.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
@@ -74,14 +74,14 @@ default.size.stdout: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
 	@echo 'Finished building: $@'
 	@echo ' '
 
-Encoder.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "Encoder.list"
+Encoder_Modulado.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "Encoder_Modulado.list"
 	@echo 'Finished building: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) Encoder.elf Encoder.list Encoder.map default.size.stdout
+	-$(RM) Encoder_Modulado.elf Encoder_Modulado.list Encoder_Modulado.map default.size.stdout
 	-@echo ' '
 
 secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST)

@@ -1,0 +1,2 @@
+../Core/Src/MachineState.c:29:15:machine_state	16	static
+../Core/Src/MachineState.c:229:6:erasePayload	24	static

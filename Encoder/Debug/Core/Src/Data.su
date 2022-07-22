@@ -1,0 +1,13 @@
+../Core/Src/Data.c:11:7:get_data	32	static
+../Core/Src/Data.c:41:29:set_receive_data_struct	24	static
+../Core/Src/Data.c:58:29:set_transmission_data_struct	32	static
+../Core/Src/Data.c:78:22:set_device_ID_struct	16	static
+../Core/Src/Data.c:86:22:get_device_ID_struct	16	static
+../Core/Src/Data.c:92:16:get_transmitt_payload	24	static
+../Core/Src/Data.c:102:22:set_device_frequency_struct	16	static
+../Core/Src/Data.c:107:22:set_device_mode_struct	16	static
+../Core/Src/Data.c:112:22:set_device_function_struct	16	static
+../Core/Src/Data.c:117:22:set_device_error_struct	16	static
+../Core/Src/Data.c:122:22:set_device_measurement_struct	24	static
+../Core/Src/Data.c:147:6:set_checksum	24	static
+../Core/Src/Data.c:163:6:reset_buffer	16	static

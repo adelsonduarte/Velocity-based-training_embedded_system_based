@@ -20,6 +20,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "usbd_cdc_if.h"
+#include "MachineState.h"
 
 /* USER CODE BEGIN INCLUDE */
 
@@ -49,8 +50,8 @@
   */
 
 /* USER CODE BEGIN PRIVATE_TYPES */
-extern uint8_t buffer[70];
-extern char USB_FLAG;
+extern uint8_t RXbuffer[70];
+extern unsigned char rxFlag;
 /* USER CODE END PRIVATE_TYPES */
 
 /**
@@ -260,17 +261,16 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
-	uint8_t contador = 0;
-	if(USB_FLAG == 0)
+	if(rxFlag == 0)
 	{
-		 memset (buffer,'\0', 70);
-	 USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
+	  memset (RXbuffer,'\0', 70);
+	  USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
 	  USBD_CDC_ReceivePacket(&hUsbDeviceFS);
 	  uint8_t len = (uint8_t) *Len;
-	  memcpy (buffer,Buf,len);
+	  memcpy (RXbuffer,Buf,len);
 	  memset (Buf,'\0',len);
 	/*  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, SET);*/
-	  USB_FLAG = 1;
+	  rxFlag = 1;
 	}
 	return (USBD_OK);
 
