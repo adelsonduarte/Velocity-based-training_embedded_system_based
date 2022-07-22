@@ -1,0 +1,7 @@
+../Core/Src/flash_v1.0.c:15:6:FLASH_apaga	40	static
+../Core/Src/flash_v1.0.c:53:6:FLASH_escreve_16bits	24	static
+../Core/Src/flash_v1.0.c:82:6:FLASH_escreve_32bits	24	static
+../Core/Src/flash_v1.0.c:112:6:FLASH_escreve_string	56	dynamic
+../Core/Src/flash_v1.0.c:148:6:FLASH_le_16bits	16	static
+../Core/Src/flash_v1.0.c:166:6:FLASH_le_32bits	16	static
+../Core/Src/flash_v1.0.c:182:6:FLASH_le_string_0xFF	24	static
