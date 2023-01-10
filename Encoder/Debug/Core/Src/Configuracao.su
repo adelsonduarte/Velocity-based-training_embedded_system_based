@@ -1,4 +1,0 @@
-../Core/Src/Configuracao.c:6:16:set_ID	24	static
-../Core/Src/Configuracao.c:16:16:get_ID	16	static
-../Core/Src/Configuracao.c:23:16:set_frequency_samples	24	static
-../Core/Src/Configuracao.c:29:16:set_operation_mode	24	static

@@ -7,12 +7,13 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2022 STMicroelectronics.
-  * All rights reserved.
+  * <h2><center>&copy; Copyright (c) 2021 STMicroelectronics.
+  * All rights reserved.</center></h2>
   *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
+  * This software component is licensed by ST under BSD 3-Clause license,
+  * the "License"; You may not use this file except in compliance with the
+  * License. You may obtain a copy of the License at:
+  *                        opensource.org/licenses/BSD-3-Clause
   *
   ******************************************************************************
   */
@@ -71,6 +72,45 @@ void Error_Handler(void);
 #define RESET_GPIO_Port GPIOA
 #define RESET_EXTI_IRQn EXTI9_5_IRQn
 /* USER CODE BEGIN Private defines */
+#define iddle 			'I'
+#define Inicio 			'0'
+#define Identification	'1'
+#define Config 			'2'
+#define Start  			'3'
+#define Read 			'4'
+#define ReadError		'5'
+#define Stop			'6'
+#define Origem			'7'
+#define Destino			'8'
+#define Funcao			'9'
+#define DadosCount		'A'
+#define Dados			'B'
+#define CheckSum		'C'
+#define Fim				'D'
+#define AUTO			'F'
+#define MAN				'M'
+#define error			'E'
+#define errorChecksum	'0'
+#define timeOut			'1'
+#define noAddress		'2'
+#define errorAddress	'3'
+#define errorDevice		'4'
+#define errorConfig		'5'
+#define errorFunction	'6'
+#define errorData		'7'
+#define errorStartHeader '8'
+#define errorEndHeader	'9'
+#define OK				'A'
+#define horario			'1'
+#define antihorario		'2'
+#define centro			'K'
+#define parado			'P'
+#define Reset			'R'
+
+
+
+
+
 
 /* USER CODE END Private defines */
 

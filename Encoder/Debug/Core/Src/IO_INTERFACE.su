@@ -1,5 +1,0 @@
-../Core/Src/IO_INTERFACE.c:11:16:start_encoder	8	static
-../Core/Src/IO_INTERFACE.c:19:16:stop_encoder	8	static
-../Core/Src/IO_INTERFACE.c:27:16:start_timer	8	static
-../Core/Src/IO_INTERFACE.c:35:16:stop_timer	8	static
-../Core/Src/IO_INTERFACE.c:43:15:reset_hardware	4	static

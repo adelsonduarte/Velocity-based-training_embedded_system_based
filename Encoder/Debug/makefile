@@ -38,34 +38,35 @@ $(wildcard ../makefile.init) \
 $(wildcard ../makefile.targets) \
 
 
-BUILD_ARTIFACT_NAME := Encoder_Modulado
+BUILD_ARTIFACT_NAME := Encoder
 BUILD_ARTIFACT_EXTENSION := elf
 BUILD_ARTIFACT_PREFIX :=
 BUILD_ARTIFACT := $(BUILD_ARTIFACT_PREFIX)$(BUILD_ARTIFACT_NAME)$(if $(BUILD_ARTIFACT_EXTENSION),.$(BUILD_ARTIFACT_EXTENSION),)
 
 # Add inputs and outputs from these tool invocations to the build variables 
 EXECUTABLES += \
-Encoder_Modulado.elf \
+Encoder.elf \
 
 MAP_FILES += \
-Encoder_Modulado.map \
+Encoder.map \
 
 SIZE_OUTPUT += \
 default.size.stdout \
 
 OBJDUMP_LIST += \
-Encoder_Modulado.list \
+Encoder.list \
 
 
 # All Target
-all: main-build
+all:
+	+@$(MAKE) --no-print-directory main-build && $(MAKE) --no-print-directory post-build
 
 # Main-build Target
-main-build: Encoder_Modulado.elf secondary-outputs
+main-build: Encoder.elf secondary-outputs
 
 # Tool invocations
-Encoder_Modulado.elf Encoder_Modulado.map: $(OBJS) $(USER_OBJS) G:\Meu\ Drive\CEFISE\ -\ Biotecnologia\Ajuste\ de\ FW\ -\ TDD\ e\ OOP\Encoder_Modulado\STM32F103C8TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "Encoder_Modulado.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"G:\Meu Drive\CEFISE - Biotecnologia\Ajuste de FW - TDD e OOP\Encoder_Modulado\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Encoder_Modulado.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+Encoder.elf Encoder.map: $(OBJS) $(USER_OBJS) C:\Users\Adelson\Documents\Github\Velocity-based-training_embedded_system_based\Encoder\STM32F103C8TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "Encoder.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"C:\Users\Adelson\Documents\Github\Velocity-based-training_embedded_system_based\Encoder\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Encoder.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
@@ -74,14 +75,18 @@ default.size.stdout: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
 	@echo 'Finished building: $@'
 	@echo ' '
 
-Encoder_Modulado.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "Encoder_Modulado.list"
+Encoder.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "Encoder.list"
 	@echo 'Finished building: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) Encoder_Modulado.elf Encoder_Modulado.list Encoder_Modulado.map default.size.stdout
+	-$(RM) Encoder.elf Encoder.list Encoder.map default.size.stdout
+	-@echo ' '
+
+post-build:
+	arm-none-eabi-objcopy -O ihex Encoder.elf Encoder.hex
 	-@echo ' '
 
 secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST)
@@ -93,6 +98,6 @@ fail-specified-linker-script-missing:
 warn-no-linker-script-specified:
 	@echo 'Warning: No linker script specified. Check the linker settings in the build configuration.'
 
-.PHONY: all clean dependents main-build fail-specified-linker-script-missing warn-no-linker-script-specified
+.PHONY: all clean dependents main-build fail-specified-linker-script-missing warn-no-linker-script-specified post-build
 
 -include ../makefile.targets
