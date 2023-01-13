@@ -281,6 +281,14 @@ while (1)
 			USB_FLAG = 0;
 	  break;
 
+	  case Codification:
+			setID();
+			TransmitData(receive_message,infoDevice.Id,8);
+			StateMachine = iddle;
+			EndReception = '\0';
+			USB_FLAG = 0;
+	  break;
+
 	  case Config:
 		DeviceParamenter(receive_message);
 		HAL_GPIO_WritePin(GPIOB,CONFIG_Pin, GPIO_PIN_SET);
@@ -697,7 +705,7 @@ if(receive_message.funcao == 2 && receive_message.dadosCount < 0)
 {
 	return errorConfig;
 }
-if(receive_message.funcao > 0x06)
+if(receive_message.funcao > 0x08)
 {
 	return errorFunction;
 }
@@ -821,29 +829,32 @@ else if (receive_message.funcao == 6)
 {
 	  StateMachine = Stop;
 }
+else if (receive_message.funcao == 7)
+{
+	  StateMachine = Codification;
+}
 return StateMachine;
 }
 
 void getID()
 {
 	uint16_t codCefise=0;
-	if(receive_message.dadosCount == 1) // Codificação
+	receive_message.dadosCount = 1;
+	FLASH_le_16bits(END_INICIAL, &codCefise);
+	if(codCefise != 0xFFFF)
 	{
-		FLASH_apaga(END_INICIAL, 1);
-		codCefise = dados[0];
 		infoDevice.Id = codCefise;
-		FLASH_escreve_16bits(END_INICIAL, &codCefise);
 	}
-	else // Identificação
-	{
-		receive_message.dadosCount = 1;
+}
 
-		FLASH_le_16bits(END_INICIAL, &codCefise);
-		if(codCefise != 0xFFFF)
-		{
-			infoDevice.Id = codCefise;
-		}
-	}
+void setID()
+{
+	uint16_t codCefise=0;
+	receive_message.dadosCount = 1;
+	FLASH_apaga(END_INICIAL, 1);
+	codCefise = dados[0];
+	infoDevice.Id = codCefise;
+	FLASH_escreve_16bits(END_INICIAL, &codCefise);
 }
 
 void DeviceParamenter(struct Recepcao message)
@@ -887,9 +898,25 @@ switch(StateMachine)
 {
 	case Identification:
 		txBuffer[0] = Send_message.inicio;
-		txBuffer[1] = infoDevice.Id;
+		txBuffer[1] = Send_message.endDestino;
 		txBuffer[2] = Send_message.endOrigem;
 		txBuffer[3] = Send_message.funcao;
+		txBuffer[4] = Send_message.dadosCount;
+		if(Send_message.dadosCount>0)
+		{
+			txBuffer[5] = infoDevice.Id;
+		}
+		txBuffer[6] = Checksum(txBuffer);
+		txBuffer[7] = Send_message.fim;
+		CDC_Transmit_FS((uint8_t*)txBuffer, sizeof(txBuffer));
+
+	break;
+
+	case Codification:
+		txBuffer[0] = Send_message.inicio;
+		txBuffer[1] = Send_message.endDestino;
+		txBuffer[2] = Send_message.endOrigem;
+		txBuffer[3] = 0x07;
 		txBuffer[4] = Send_message.dadosCount;
 		if(Send_message.dadosCount>0)
 		{
@@ -922,7 +949,7 @@ switch(StateMachine)
 		CDC_Transmit_FS((uint8_t*)txBuffer, sizeof(txBuffer));
 	break;
 
-	case Read: //BOTAO LER -> LER MANUAL
+	case Read:
 		txBufferRead[0] = Send_message.inicio;
 		txBufferRead[1] = infoDevice.Id;
 		txBufferRead[2] = Send_message.endOrigem;
