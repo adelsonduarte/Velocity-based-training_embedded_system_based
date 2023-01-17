@@ -80,6 +80,7 @@ void Error_Handler(void);
 #define Read 			'4'
 #define ReadError		'5'
 #define Stop			'6'
+#define Codification	'7'
 #define Origem			'7'
 #define Destino			'8'
 #define Funcao			'9'

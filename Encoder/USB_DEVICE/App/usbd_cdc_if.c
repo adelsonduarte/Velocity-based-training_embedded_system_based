@@ -263,7 +263,7 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 	uint8_t contador = 0;
 	if(USB_FLAG == 0)
 	{
-		 memset (buffer,'\0', 70);
+	memset (buffer,'\0', 70);
 	 USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
 	  USBD_CDC_ReceivePacket(&hUsbDeviceFS);
 	  uint8_t len = (uint8_t) *Len;

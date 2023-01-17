@@ -337,7 +337,6 @@ while (1)
 		}
 		if(readStatus == AUTO)
 		{
-			HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, RESET);
 			if(transmitFlag == 1 && USB_FLAG == 0)
 			{
 
