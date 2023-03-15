@@ -49,35 +49,26 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 uint8_t buffer[70];
-char USB_FLAG = 0;
 char EndReception='\0';
 char RXBuffer[1];
 char RXBufferArray[10];
 char readStatus;
-int i=0;
-int transmitFlag = 0;
-//int actualDirection = 0,currentDirection=0, oldDirection=0, oldTime = 0;
-unsigned int newTime=0, acquiredTime = 0;
-int dados[4];
+uint8_t i=0;
+int16_t dados[4];
 char errorFlag = 'H';
+
+uint16_t timeTotal=0;
+
 int32_t bufferPulso[10];
-volatile int32_t fimPulso[10];
-uint32_t accVar=0;
-int32_t avgVar=0;
-char readFlag = 0;
-uint8_t timeTotal=0;
-volatile int32_t pulseCounter = 0;
-volatile int32_t pulseBuffer = 0;
-int32_t counterPulso[10];
 
 ////
 
-uint16_t referenceTime = 0;
-volatile uint16_t actualTime = 0;
-volatile uint16_t previousTime = 0;
-volatile uint16_t edgeTime = 0;
-uint8_t pulseFlag = FALSE;
-uint8_t transmissionFlag = FALSE;
+int32_t currentPulse[10];
+volatile int32_t pulseCounter = 0;
+int32_t pulseBuffer = 0;
+volatile char USB_FLAG = 0;
+
+uint16_t edgeTime = 0;
 unsigned char readState = INIT;
 
 ///
@@ -131,20 +122,12 @@ uint16_t c_sum=0;
 uint8_t checksum=0, Total=0;
 char StateMachine;
 char uart_state;
-char encoderState = Inicio;
 int timerEnable = 0;
-volatile uint16_t currentTime[10];
-volatile uint16_t bufferTime[10];
-int32_t transmitTime[10];
-char flagManual = 1;
+uint16_t currentTime[10];
+uint16_t bufferTime = 0;;
 uint8_t samples = 0;
-int32_t contador=0;
-int16_t simulEncoder=0;
-int16_t simulEncoderBuffer=0;
-int16_t simulEncoderBufferOld=0;
-int32_t simulFinalBuffer = 0;
-volatile char direction=0;
-char deviceFlag = 0;
+volatile uint8_t direction=0;
+uint8_t deviceFlag = 0;
 //int countEncoder=0;
 /* USER CODE END PV */
 
@@ -173,6 +156,14 @@ void acquisition(void);
 
 volatile uint32_t interruptCount = 0;
 
+#define HZ_1000 10
+#define HZ_500  20
+#define HZ_200  50
+#define HZ_100  100
+#define HZ_50 	200
+
+
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -187,10 +178,12 @@ void delay(uint16_t delay)
 void acquisition(void)
 {
 	readState = INIT;
+	edgeTime = 0;
 	while(1)
 	{
 		if(readState == INIT)
 		{
+			pulseCounter = 0;
 			USB_FLAG = 0;
 			__HAL_TIM_SET_COUNTER(&htim3,0);
 			HAL_TIM_Base_Start(&htim3);
@@ -203,32 +196,45 @@ void acquisition(void)
 
 		if(readState == COLETA_ALL)
 		{
-			while (samples <10);
-//			__HAL_TIM_SET_COUNTER(&htim3,0);
-			samples = 0;
-			memcpy(bufferPulso,fimPulso,sizeof(fimPulso));
-			memcpy(bufferTime,currentTime,sizeof(currentTime));
-			for(int i = 0; i<9; i++)
+			/*
+			 * Cada tick do countador TIM3 equivale a 100us;
+			 * Na funcao DeviceParamenter(), o valor recebido em dados[1] equivale a taxa de aquisição,
+			 * sendo o valor mínimo de aquisição igual 1ms (Fmax = 1kHz, dado[1] = 1), realizo multiplicação
+			 * dado[1] * 10 para que 1ms seja equivalente a 10 ticks do Timer3 (10 ticks x 100us = 1000us)
+			 * e então o polling abaixo funcione;
+			 */
+			while(__HAL_TIM_GET_COUNTER(&htim3) < timeTotal && samples<10);
+			memcpy(&bufferTime,&(__HAL_TIM_GET_COUNTER(&htim3)),sizeof(uint16_t));
+			memcpy(&pulseBuffer,&pulseCounter,sizeof(int32_t));
+			__HAL_TIM_SET_COUNTER(&htim3,0);
+
+			bufferTime = bufferTime/10;
+			edgeTime = bufferTime + edgeTime;
+
+			currentPulse[samples] = pulseBuffer;
+			currentTime[samples] = edgeTime;
+			samples++;
+
+			if(samples == 10)
 			{
-			 transmitTime[i] = bufferTime[i+1] - bufferTime[i];
+				samples = 0;
+				readState = TRANSMISSAO;
 			}
-			readState = TRANSMISSAO;
 		}
+
+
 		if(readState == TRANSMISSAO)
 		{
-			TransmitData(receive_message,fimPulso,67);
-			transmissionFlag = FALSE;
+			TransmitData(receive_message,currentPulse,67);
 			HAL_GPIO_TogglePin(GPIOA, ACQUISITION_Pin);
 			EndReception = '\0';
-			 if(USB_FLAG == 1)
+			if(USB_FLAG == 1)
 			{
 				readState = COMUNICACAO;
 			}
 			else readState = COLETA_ALL;
 		}
 		if(readState == COMUNICACAO) break;
-
-
 
 	}
 }
@@ -285,6 +291,7 @@ char i=0;
 //TEMPO TESTE
 //StateMachine = Start;
 //readStatus = AUTO;
+//timeTotal = HZ_50;
 
   /* USER CODE END 2 */
 
@@ -366,9 +373,6 @@ while (1)
 		USB_FLAG = 0;
 	   break;
 
-	   /*Primeiro TransmitData(receive_message,0,7) envia a confirmação da msg de inicio de leitura
-		*Segundo TransmitData(receive_message,counterPulso,67) envia os dados
-		*/
 	  case Start:
 		startFlag = StartDevice(deviceFlag);
 		deviceFlag = startFlag;
@@ -404,8 +408,9 @@ while (1)
 	  break;
 
 	  case ReadError:
+		  memcpy(bufferPulso,currentPulse,sizeof(int32_t));
 		HAL_GPIO_WritePin(GPIOA,ACQUISITION_Pin, GPIO_PIN_SET);
-		TransmitData(receive_message,counterPulso,67);
+		TransmitData(receive_message,bufferPulso,67);
 		HAL_GPIO_WritePin(GPIOA,ACQUISITION_Pin, GPIO_PIN_RESET);
 		StateMachine = iddle;
 		EndReception = '\0';
@@ -563,7 +568,7 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 48000-1;
+  htim3.Init.Prescaler = 4800-1;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim3.Init.Period = 65356-1;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -687,15 +692,23 @@ char reset;
 infoDevice.Id =0;
 for(i=0;i<10;i++)
 {
-  counterPulso[i] = 0;
+  bufferPulso[i] = 0;
   currentTime[i] = 0;
-  fimPulso[contador] = 0;
+  currentPulse[i] = 0;
 }
 reset = StopDevice(HAL_OK);
 
 return reset;
 }
 
+
+/*
+ * 	000007 - 0A C0 D0 02 02 01 14 57 0F  - Configuração
+	000009 - 0A C0 D0 02 02 01 0A 61 0F  - Configuração
+	000011 - 0A C0 D0 02 02 01 05 66 0F  - Configuração
+	000013 - 0A C0 D0 02 02 01 02 69 0F  - Configuração
+	000015 - 0A C0 D0 02 02 01 01 6A 0F  - Configuração
+ */
 void structDados()
 {
 uint8_t counter=0;
@@ -887,7 +900,7 @@ void setID()
 
 void DeviceParamenter(struct Recepcao message)
 {
-timeTotal = dados[1];
+timeTotal = dados[1] * 10;
 switch(dados[0])
 {
 	case 0x01:
@@ -987,8 +1000,8 @@ switch(StateMachine)
 		txBufferRead[4] = 0x3C;
 		for(countArray = 0; countArray<10; countArray++)
 		{
-//			timeEncoder.all = currentTime[countArray];
-			timeEncoder.all = bufferTime[countArray];
+			timeEncoder.all = currentTime[countArray];
+//			timeEncoder.all = bufferTime[countArray];
 			encoderPulso.all = dataToSend[countArray];
 			for(counter = 2; counter>0; counter--)
 			{
@@ -1170,10 +1183,9 @@ if(stopEncoder == HAL_OK && timerEnable == HAL_OK)
 {
 	for(contador=0;contador<10;contador++)
 	{
-		counterPulso[contador] = 0;
-		fimPulso[contador] = 0;
+		bufferPulso[contador] = 0;
+		currentPulse[contador] = 0;
 		currentTime[contador] = 0;
-		transmitFlag = 0;
 		USB_FLAG = 0;
 	}
 	samples = 0;
@@ -1223,9 +1235,6 @@ return checksum;
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 {
 
-	actualTime = __HAL_TIM_GET_COUNTER(&htim3);
-	edgeTime += (actualTime - previousTime);
-	previousTime = actualTime;
 	direction = __HAL_TIM_IS_TIM_COUNTING_DOWN(&htim2);
 	if(direction == 0)
 	{
@@ -1235,11 +1244,7 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 	{
 		pulseCounter--;
 	}
-	fimPulso[samples] = pulseCounter;
-	currentTime[samples] = edgeTime;
-//	currentTime[samples] = actualTime;
-	samples++;
-	pulseFlag = TRUE;
+
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
@@ -1252,24 +1257,6 @@ if(EndReception == '\0')
 
 }
 
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
-{
-/* 	50 Hz -> 20
-	100 hz -> 10
-	200 hz ->5
-	500 Hz -> 2
-	1k -> 1
- */
-
-
-//	newTime+=1; //1ms
-//	if(newTime == timeTotal)
-//	{
-//		samples++;
-//		newTime = 0;
-//	}
-//}
-}
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
