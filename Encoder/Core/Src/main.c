@@ -20,7 +20,6 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "usb_device.h"
-#include "flash_v1.0.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -61,22 +60,27 @@ int transmitFlag = 0;
 unsigned int newTime=0, acquiredTime = 0;
 int dados[4];
 char errorFlag = 'H';
-int32_t counterPulso[10];
-int32_t subPulso[10];
-int32_t fimPulso[10];
-int32_t pulsoPulso[10];
+int32_t bufferPulso[10];
+volatile int32_t fimPulso[10];
 uint32_t accVar=0;
 int32_t avgVar=0;
 char readFlag = 0;
 uint8_t timeTotal=0;
-volatile int32_t posAtual=0;
-volatile int32_t posAtualBuffer=0;
-volatile int32_t posAnterior=0;
-volatile int32_t posVar=0;
-volatile uint32_t buffer32bit=0;
 volatile int32_t pulseCounter = 0;
-uint16_t pulseCounter2 = 0;
-volatile uint16_t contadorzin = 0;
+volatile int32_t pulseBuffer = 0;
+int32_t counterPulso[10];
+
+////
+
+uint16_t referenceTime = 0;
+volatile uint16_t actualTime = 0;
+volatile uint16_t previousTime = 0;
+volatile uint16_t edgeTime = 0;
+uint8_t pulseFlag = FALSE;
+uint8_t transmissionFlag = FALSE;
+unsigned char readState = INIT;
+
+///
 
 struct Envio{
 int inicio;
@@ -129,9 +133,9 @@ char StateMachine;
 char uart_state;
 char encoderState = Inicio;
 int timerEnable = 0;
-uint16_t bufferPulso = 0;
-uint32_t bufferPulso2 = 0;
-unsigned int currentTime[10];
+volatile uint16_t currentTime[10];
+volatile uint16_t bufferTime[10];
+int32_t transmitTime[10];
 char flagManual = 1;
 uint8_t samples = 0;
 int32_t contador=0;
@@ -139,7 +143,7 @@ int16_t simulEncoder=0;
 int16_t simulEncoderBuffer=0;
 int16_t simulEncoderBufferOld=0;
 int32_t simulFinalBuffer = 0;
-char direction=0;
+volatile char direction=0;
 char deviceFlag = 0;
 //int countEncoder=0;
 /* USER CODE END PV */
@@ -164,48 +168,109 @@ void DeviceParamenter(struct Recepcao message);
 int  VerificaErro();
 void structDados();
 char deviceReset();
+void delay(uint16_t delay);
+void acquisition(void);
+
+volatile uint32_t interruptCount = 0;
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+void delay(uint16_t delay)
+{
+	__HAL_TIM_SET_COUNTER(&htim3,0);
+	while(__HAL_TIM_GET_COUNTER(&htim3) < delay);
+}
+
+void acquisition(void)
+{
+	readState = INIT;
+	while(1)
+	{
+		if(readState == INIT)
+		{
+			USB_FLAG = 0;
+			__HAL_TIM_SET_COUNTER(&htim3,0);
+			HAL_TIM_Base_Start(&htim3);
+			HAL_TIM_Encoder_Start_IT(&htim2, TIM_CHANNEL_1);
+			HAL_Delay(1);
+			readState = COLETA_ALL;
+
+
+		}
+
+		if(readState == COLETA_ALL)
+		{
+			while (samples <10);
+//			__HAL_TIM_SET_COUNTER(&htim3,0);
+			samples = 0;
+			memcpy(bufferPulso,fimPulso,sizeof(fimPulso));
+			memcpy(bufferTime,currentTime,sizeof(currentTime));
+			for(int i = 0; i<9; i++)
+			{
+			 transmitTime[i] = bufferTime[i+1] - bufferTime[i];
+			}
+			readState = TRANSMISSAO;
+		}
+		if(readState == TRANSMISSAO)
+		{
+			TransmitData(receive_message,fimPulso,67);
+			transmissionFlag = FALSE;
+			HAL_GPIO_TogglePin(GPIOA, ACQUISITION_Pin);
+			EndReception = '\0';
+			 if(USB_FLAG == 1)
+			{
+				readState = COMUNICACAO;
+			}
+			else readState = COLETA_ALL;
+		}
+		if(readState == COMUNICACAO) break;
+
+
+
+	}
+}
+
+
+
 
 /* USER CODE END 0 */
 
 /**
-* @brief  The application entry point.
-* @retval int
-*/
+  * @brief  The application entry point.
+  * @retval int
+  */
 int main(void)
 {
-/* USER CODE BEGIN 1 */
+  /* USER CODE BEGIN 1 */
 /*	CDC_Transmit_FS((uint8_t*)data, strlen(data));*/
-/* USER CODE END 1 */
+  /* USER CODE END 1 */
 
-/* MCU Configuration--------------------------------------------------------*/
+  /* MCU Configuration--------------------------------------------------------*/
 
-/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-HAL_Init();
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
 
-/* USER CODE BEGIN Init */
+  /* USER CODE BEGIN Init */
 
-/* USER CODE END Init */
+  /* USER CODE END Init */
 
-/* Configure the system clock */
-SystemClock_Config();
+  /* Configure the system clock */
+  SystemClock_Config();
 
-/* USER CODE BEGIN SysInit */
+  /* USER CODE BEGIN SysInit */
 
-/* USER CODE END SysInit */
+  /* USER CODE END SysInit */
 
-/* Initialize all configured peripherals */
-MX_GPIO_Init();
-MX_TIM2_Init();
-MX_TIM3_Init();
-MX_USART2_UART_Init();
-MX_USB_DEVICE_Init();
-/* USER CODE BEGIN 2 */
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_TIM2_Init();
+  MX_TIM3_Init();
+  MX_USART2_UART_Init();
+  MX_USB_DEVICE_Init();
+  /* USER CODE BEGIN 2 */
 HAL_Delay(500);
 //HAL_TIM_Encoder_Start_IT(&htim2, TIM_CHANNEL_ALL);
 HAL_UART_Receive_IT(&huart2, (uint8_t *)RXBuffer, 1);
@@ -217,11 +282,14 @@ char startFlag = 0;
 char stopFlag = 1;
 char i=0;
 
+//TEMPO TESTE
+//StateMachine = Start;
+//readStatus = AUTO;
 
-/* USER CODE END 2 */
+  /* USER CODE END 2 */
 
-/* Infinite loop */
-/* USER CODE BEGIN WHILE */
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
 
 while (1)
 {
@@ -323,55 +391,16 @@ while (1)
 	  break;
 
 	  case Read:
-		if(timerEnable == HAL_OK)
-		{
-			pulseCounter = 0;
-			timerEnable = 1;
-			acquiredTime = 0;
-			newTime = 0;
-			HAL_TIM_Base_Start_IT(&htim3);
-			readFlag = 1;
-			EndReception = '\0';
-			USB_FLAG = 0;
-
-		}
-		if(readStatus == AUTO)
-		{
-			if(transmitFlag == 1 && USB_FLAG == 0)
-			{
-
-				for(i=0;i<10;i++) counterPulso[i] = fimPulso[i];
-				TransmitData(receive_message,counterPulso,67);
-				transmitFlag = 0;
-				HAL_GPIO_TogglePin(GPIOA, ACQUISITION_Pin);
-				StateMachine = Read;
-				EndReception = '\0';
-
-			}
-			else if(USB_FLAG == 1)
-			{
-				HAL_GPIO_WritePin(GPIOB,CONFIG_Pin, GPIO_PIN_RESET);
-				HAL_TIM_Base_Stop_IT(&htim3);
-				HAL_Delay(1);
-				StateMachine = iddle;
-			}
-			else
-			{
-				StateMachine = Read;
-			}
-		}
-		else if (readStatus == MAN)
-		{
-				while(transmitFlag==0);
-				HAL_GPIO_TogglePin(GPIOA, ACQUISITION_Pin);
-				transmitFlag = 0;
-				for(i=0;i<10;i++) counterPulso[i] = fimPulso[i];
-				TransmitData(receive_message,counterPulso,67);
-				for(i=0;i<10;i++) counterPulso[i] = 0;
-				StateMachine = iddle;
-				EndReception = '\0';
-				USB_FLAG = 0;
-		}
+		  //TEMPO TESTE
+//		 HAL_TIM_Base_Start(&htim3);
+//		 while(1)
+//		 {
+//			 HAL_GPIO_TogglePin(GPIOB, CONFIG_Pin);
+//			 delay(1000); //1tick = 1us 60000 ticks ->60ms
+//		 }
+		acquisition();
+		HAL_GPIO_WritePin(GPIOB,CONFIG_Pin, GPIO_PIN_RESET);
+		StateMachine = iddle;
 	  break;
 
 	  case ReadError:
@@ -414,239 +443,239 @@ while (1)
 		USB_FLAG = 0;
 		break;
   }
-/* USER CODE END WHILE */
+    /* USER CODE END WHILE */
 
-/* USER CODE BEGIN 3 */
+    /* USER CODE BEGIN 3 */
 }
-/* USER CODE END 3 */
+  /* USER CODE END 3 */
 }
 
 /**
-* @brief System Clock Configuration
-* @retval None
-*/
+  * @brief System Clock Configuration
+  * @retval None
+  */
 void SystemClock_Config(void)
 {
-RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
-/** Initializes the RCC Oscillators according to the specified parameters
-* in the RCC_OscInitTypeDef structure.
-*/
-RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
-RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
-if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-{
-Error_Handler();
-}
-/** Initializes the CPU, AHB and APB buses clocks
-*/
-RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-						  |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
+  /** Initializes the RCC Oscillators according to the specified parameters
+  * in the RCC_OscInitTypeDef structure.
+  */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV2;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL12;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Initializes the CPU, AHB and APB buses clocks
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
-{
-Error_Handler();
-}
-PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB;
-PeriphClkInit.UsbClockSelection = RCC_USBCLKSOURCE_PLL_DIV1_5;
-if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
-{
-Error_Handler();
-}
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB;
+  PeriphClkInit.UsbClockSelection = RCC_USBCLKSOURCE_PLL;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
+  {
+    Error_Handler();
+  }
 }
 
 /**
-* @brief TIM2 Initialization Function
-* @param None
-* @retval None
-*/
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
 static void MX_TIM2_Init(void)
 {
 
-/* USER CODE BEGIN TIM2_Init 0 */
+  /* USER CODE BEGIN TIM2_Init 0 */
 
-/* USER CODE END TIM2_Init 0 */
+  /* USER CODE END TIM2_Init 0 */
 
-TIM_Encoder_InitTypeDef sConfig = {0};
-TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_Encoder_InitTypeDef sConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
 
-/* USER CODE BEGIN TIM2_Init 1 */
+  /* USER CODE BEGIN TIM2_Init 1 */
 
-/* USER CODE END TIM2_Init 1 */
-htim2.Instance = TIM2;
-htim2.Init.Prescaler = 0;
-htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-htim2.Init.Period = 65535;
-htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
-sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
-sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
-sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
-sConfig.IC1Filter = 15;
-sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
-sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
-sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
-sConfig.IC2Filter = 15;
-if (HAL_TIM_Encoder_Init(&htim2, &sConfig) != HAL_OK)
-{
-Error_Handler();
-}
-sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
-{
-Error_Handler();
-}
-/* USER CODE BEGIN TIM2_Init 2 */
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 0;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 65535;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI1;
+  sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC1Filter = 15;
+  sConfig.IC2Polarity = TIM_ICPOLARITY_RISING;
+  sConfig.IC2Selection = TIM_ICSELECTION_DIRECTTI;
+  sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
+  sConfig.IC2Filter = 15;
+  if (HAL_TIM_Encoder_Init(&htim2, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
 
-/* USER CODE END TIM2_Init 2 */
+  /* USER CODE END TIM2_Init 2 */
 
 }
 
 /**
-* @brief TIM3 Initialization Function
-* @param None
-* @retval None
-*/
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
 static void MX_TIM3_Init(void)
 {
 
-/* USER CODE BEGIN TIM3_Init 0 */
+  /* USER CODE BEGIN TIM3_Init 0 */
 
-/* USER CODE END TIM3_Init 0 */
+  /* USER CODE END TIM3_Init 0 */
 
-TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
 
-/* USER CODE BEGIN TIM3_Init 1 */
+  /* USER CODE BEGIN TIM3_Init 1 */
 
-/* USER CODE END TIM3_Init 1 */
-htim3.Instance = TIM3;
-htim3.Init.Prescaler = 72-1;
-htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-htim3.Init.Period = 1000-1;
-htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
-{
-Error_Handler();
-}
-sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
-{
-Error_Handler();
-}
-sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
-{
-Error_Handler();
-}
-/* USER CODE BEGIN TIM3_Init 2 */
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 48000-1;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 65356-1;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
 
-/* USER CODE END TIM3_Init 2 */
+  /* USER CODE END TIM3_Init 2 */
 
 }
 
 /**
-* @brief USART2 Initialization Function
-* @param None
-* @retval None
-*/
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
 static void MX_USART2_UART_Init(void)
 {
 
-/* USER CODE BEGIN USART2_Init 0 */
+  /* USER CODE BEGIN USART2_Init 0 */
 
-/* USER CODE END USART2_Init 0 */
+  /* USER CODE END USART2_Init 0 */
 
-/* USER CODE BEGIN USART2_Init 1 */
+  /* USER CODE BEGIN USART2_Init 1 */
 
-/* USER CODE END USART2_Init 1 */
-huart2.Instance = USART2;
-huart2.Init.BaudRate = 115200;
-huart2.Init.WordLength = UART_WORDLENGTH_8B;
-huart2.Init.StopBits = UART_STOPBITS_1;
-huart2.Init.Parity = UART_PARITY_NONE;
-huart2.Init.Mode = UART_MODE_TX_RX;
-huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-if (HAL_UART_Init(&huart2) != HAL_OK)
-{
-Error_Handler();
-}
-/* USER CODE BEGIN USART2_Init 2 */
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
 
-/* USER CODE END USART2_Init 2 */
+  /* USER CODE END USART2_Init 2 */
 
 }
 
 /**
-* @brief GPIO Initialization Function
-* @param None
-* @retval None
-*/
+  * @brief GPIO Initialization Function
+  * @param None
+  * @retval None
+  */
 static void MX_GPIO_Init(void)
 {
-GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-/* GPIO Ports Clock Enable */
-__HAL_RCC_GPIOC_CLK_ENABLE();
-__HAL_RCC_GPIOD_CLK_ENABLE();
-__HAL_RCC_GPIOA_CLK_ENABLE();
-__HAL_RCC_GPIOB_CLK_ENABLE();
+  /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
-/*Configure GPIO pin Output Level */
-HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
 
-/*Configure GPIO pin Output Level */
-HAL_GPIO_WritePin(GPIOB, STOP_Pin|ERRO_Pin|STATUS_Pin|CONFIG_Pin, GPIO_PIN_RESET);
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, STOP_Pin|ERRO_Pin|STATUS_Pin|CONFIG_Pin, GPIO_PIN_RESET);
 
-/*Configure GPIO pin Output Level */
-HAL_GPIO_WritePin(ACQUISITION_GPIO_Port, ACQUISITION_Pin, GPIO_PIN_RESET);
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(ACQUISITION_GPIO_Port, ACQUISITION_Pin, GPIO_PIN_RESET);
 
-/*Configure GPIO pin : PC13 */
-GPIO_InitStruct.Pin = GPIO_PIN_13;
-GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-GPIO_InitStruct.Pull = GPIO_NOPULL;
-GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  /*Configure GPIO pin : PC13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-/*Configure GPIO pins : STOP_Pin ERRO_Pin STATUS_Pin CONFIG_Pin */
-GPIO_InitStruct.Pin = STOP_Pin|ERRO_Pin|STATUS_Pin|CONFIG_Pin;
-GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-GPIO_InitStruct.Pull = GPIO_NOPULL;
-GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  /*Configure GPIO pins : STOP_Pin ERRO_Pin STATUS_Pin CONFIG_Pin */
+  GPIO_InitStruct.Pin = STOP_Pin|ERRO_Pin|STATUS_Pin|CONFIG_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-/*Configure GPIO pin : ACQUISITION_Pin */
-GPIO_InitStruct.Pin = ACQUISITION_Pin;
-GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-GPIO_InitStruct.Pull = GPIO_NOPULL;
-GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-HAL_GPIO_Init(ACQUISITION_GPIO_Port, &GPIO_InitStruct);
+  /*Configure GPIO pin : ACQUISITION_Pin */
+  GPIO_InitStruct.Pin = ACQUISITION_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(ACQUISITION_GPIO_Port, &GPIO_InitStruct);
 
-/*Configure GPIO pin : RESET_Pin */
-GPIO_InitStruct.Pin = RESET_Pin;
-GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
-GPIO_InitStruct.Pull = GPIO_NOPULL;
-HAL_GPIO_Init(RESET_GPIO_Port, &GPIO_InitStruct);
+  /*Configure GPIO pin : RESET_Pin */
+  GPIO_InitStruct.Pin = RESET_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(RESET_GPIO_Port, &GPIO_InitStruct);
 
-/* EXTI interrupt init*/
-HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
-HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 }
 
@@ -876,9 +905,11 @@ char StartDevice(char deviceFlag)
 char startEncoder;
 if(deviceFlag == 0)
 {
-	startEncoder = HAL_TIM_Encoder_Start_IT(&htim2, TIM_CHANNEL_ALL);
+//	startEncoder = HAL_TIM_Encoder_Start_IT(&htim2, TIM_CHANNEL_ALL);
+//	startEncoder = HAL_TIM_Encoder_Start_IT(&htim2, TIM_CHANNEL_1);
+	startEncoder = HAL_OK;
 	HAL_Delay(10);
-	/*startEncoder = HAL_TIM_Encoder_Start_IT(&htim2, TIM_CHANNEL_1);*/
+	//
 }
 if(startEncoder == HAL_OK)
 	return 1;
@@ -956,7 +987,8 @@ switch(StateMachine)
 		txBufferRead[4] = 0x3C;
 		for(countArray = 0; countArray<10; countArray++)
 		{
-			timeEncoder.all = currentTime[countArray];
+//			timeEncoder.all = currentTime[countArray];
+			timeEncoder.all = bufferTime[countArray];
 			encoderPulso.all = dataToSend[countArray];
 			for(counter = 2; counter>0; counter--)
 			{
@@ -1126,12 +1158,13 @@ static char stopEncoder;
 char contador = 0;
 if(deviceFlag == 1)
 {
-	stopEncoder = HAL_TIM_Encoder_Stop_IT(&htim2, TIM_CHANNEL_ALL);
+//	stopEncoder = HAL_TIM_Encoder_Stop_IT(&htim2, TIM_CHANNEL_ALL);
+	stopEncoder = HAL_TIM_Encoder_Stop_IT(&htim2, TIM_CHANNEL_1);
 	timerEnable = HAL_TIM_Base_Stop_IT(&htim3);
 	deviceFlag = 0;
 }
 
-/*stopEncoder = HAL_TIM_Encoder_Stop_IT(&htim2, TIM_CHANNEL_1);*/
+
 HAL_Delay(10);
 if(stopEncoder == HAL_OK && timerEnable == HAL_OK)
 {
@@ -1189,23 +1222,26 @@ return checksum;
 //Interrupções
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 {
-if(readFlag == 1)
-{
-	/*pulseCounter++;*/
+
+	actualTime = __HAL_TIM_GET_COUNTER(&htim3);
+	edgeTime += (actualTime - previousTime);
+	previousTime = actualTime;
 	direction = __HAL_TIM_IS_TIM_COUNTING_DOWN(&htim2);
 	if(direction == 0)
 	{
 		pulseCounter++;
-/*			posAtual = pulseCounter;*/
 	}
 	else if (direction == 1)
 	{
 		pulseCounter--;
-//			if(pulseCounter<0) pulseCounter = 0;
-		/*posAtual = pulseCounter;*/
 	}
+	fimPulso[samples] = pulseCounter;
+	currentTime[samples] = edgeTime;
+//	currentTime[samples] = actualTime;
+	samples++;
+	pulseFlag = TRUE;
 }
-}
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 if(EndReception == '\0')
@@ -1218,30 +1254,21 @@ if(EndReception == '\0')
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
 {
-//maquina de estado?
-/*50 Hz -> 20
-100 hz -> 10
-200 hz ->5
-500 Hz -> 2
-1k -> 1*/
+/* 	50 Hz -> 20
+	100 hz -> 10
+	200 hz ->5
+	500 Hz -> 2
+	1k -> 1
+ */
 
-	newTime+=1; //1ms
-	if(newTime == timeTotal)
-//	if(newTime == 20)
-	{
-		readFlag = 0;
-		fimPulso[samples] = pulseCounter;
-		acquiredTime += newTime;
-		currentTime[samples] = acquiredTime;
-		samples++;
-		newTime = 0;
-		readFlag = 1;
-	}
-	if(samples == 10)
-	{
-		transmitFlag = 1;
-		samples=0;
-	}
+
+//	newTime+=1; //1ms
+//	if(newTime == timeTotal)
+//	{
+//		samples++;
+//		newTime = 0;
+//	}
+//}
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
@@ -1256,34 +1283,34 @@ if(GPIO_Pin == RESET_Pin)
 /* USER CODE END 4 */
 
 /**
-* @brief  This function is executed in case of error occurrence.
-* @retval None
-*/
+  * @brief  This function is executed in case of error occurrence.
+  * @retval None
+  */
 void Error_Handler(void)
 {
-/* USER CODE BEGIN Error_Handler_Debug */
+  /* USER CODE BEGIN Error_Handler_Debug */
 /* User can add his own implementation to report the HAL error return state */
 __disable_irq();
 while (1)
 {
 }
-/* USER CODE END Error_Handler_Debug */
+  /* USER CODE END Error_Handler_Debug */
 }
 
 #ifdef  USE_FULL_ASSERT
 /**
-* @brief  Reports the name of the source file and the source line number
-*         where the assert_param error has occurred.
-* @param  file: pointer to the source file name
-* @param  line: assert_param error line source number
-* @retval None
-*/
+  * @brief  Reports the name of the source file and the source line number
+  *         where the assert_param error has occurred.
+  * @param  file: pointer to the source file name
+  * @param  line: assert_param error line source number
+  * @retval None
+  */
 void assert_failed(uint8_t *file, uint32_t line)
 {
-/* USER CODE BEGIN 6 */
+  /* USER CODE BEGIN 6 */
 /* User can add his own implementation to report the file name and line number,
  ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-/* USER CODE END 6 */
+  /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
 

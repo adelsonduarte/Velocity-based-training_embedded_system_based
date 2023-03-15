@@ -109,6 +109,15 @@ void Error_Handler(void);
 #define Reset			'R'
 
 
+#define INIT 0
+#define COLETA_ALL 1
+#define COLETA_FIRST 2
+#define TRANSMISSAO 3
+#define COMUNICACAO 4
+#define TRUE 1
+#define FALSE 0
+
+
 
 
 
