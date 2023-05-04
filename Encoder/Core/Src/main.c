@@ -34,6 +34,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define END_INICIAL 0x0800F000 // Pag. 60 | Max (pag 63): 0x0800FC00
+#define AMOSTRA 10
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -59,13 +60,16 @@ char errorFlag = 'H';
 
 uint16_t timeTotal=0;
 
-int32_t bufferPulso[10];
+int32_t bufferPulso[AMOSTRA];
 
 ////
 
-int32_t currentPulse[10];
+int32_t currentPulse[AMOSTRA];
 volatile int32_t pulseCounter = 0;
-int32_t pulseBuffer = 0;
+int16_t pulseBuffer = 0;
+
+int16_t previous = 0;
+int16_t actual = 0;
 volatile char USB_FLAG = 0;
 
 uint16_t edgeTime = 0;
@@ -118,15 +122,18 @@ char pt[2];
 union Time timeEncoder = {.all=0};
 
 
+
 uint16_t c_sum=0;
 uint8_t checksum=0, Total=0;
 char StateMachine;
 char uart_state;
 int timerEnable = 0;
-uint16_t currentTime[10];
+uint16_t currentTime[AMOSTRA];
 uint16_t bufferTime = 0;;
 uint8_t samples = 0;
 volatile uint8_t direction=0;
+static int16_t count=0;
+volatile int16_t aux_count=0;
 uint8_t deviceFlag = 0;
 //int countEncoder=0;
 /* USER CODE END PV */
@@ -156,11 +163,11 @@ void acquisition(void);
 
 volatile uint32_t interruptCount = 0;
 
-#define HZ_1000 10
-#define HZ_500  20
-#define HZ_200  50
-#define HZ_100  100
-#define HZ_50 	200
+#define HZ_1000 10 /* 1x80*/
+#define HZ_500  20 /* 2x80*/
+#define HZ_200  50 /* 5x80*/
+#define HZ_100  100 /* 10x80*/
+#define HZ_50 	200 /* 20x80*/
 
 
 
@@ -183,12 +190,13 @@ void acquisition(void)
 	{
 		if(readState == INIT)
 		{
-			pulseCounter = 0;
+			pulseBuffer = 0;
 			USB_FLAG = 0;
 			__HAL_TIM_SET_COUNTER(&htim3,0);
 			HAL_TIM_Base_Start(&htim3);
-			HAL_TIM_Encoder_Start_IT(&htim2, TIM_CHANNEL_1);
-			HAL_Delay(1);
+//			HAL_TIM_Encoder_Start_IT(&htim2, TIM_CHANNEL_1);
+			HAL_TIM_Encoder_Start_IT(&htim2, TIM_CHANNEL_ALL);
+//			HAL_Delay(1);
 			readState = COLETA_ALL;
 
 
@@ -200,13 +208,21 @@ void acquisition(void)
 			 * Cada tick do countador TIM3 equivale a 100us;
 			 * Na funcao DeviceParamenter(), o valor recebido em dados[1] equivale a taxa de aquisição,
 			 * sendo o valor mínimo de aquisição igual 1ms (Fmax = 1kHz, dado[1] = 1), realizo multiplicação
-			 * dado[1] * 10 para que 1ms seja equivalente a 10 ticks do Timer3 (10 ticks x 100us = 1000us)
+			 * dado[1] * 10 para que 1ms seja equivalente a 10 ticks do Timer3 (10 ticks x 100u = 1ms)
 			 * e então o polling abaixo funcione;
 			 */
-			while(__HAL_TIM_GET_COUNTER(&htim3) < timeTotal && samples<10);
-			memcpy(&bufferTime,&(__HAL_TIM_GET_COUNTER(&htim3)),sizeof(uint16_t));
-			memcpy(&pulseBuffer,&pulseCounter,sizeof(int32_t));
 			__HAL_TIM_SET_COUNTER(&htim3,0);
+			while(__HAL_TIM_GET_COUNTER(&htim3) < timeTotal && samples<AMOSTRA);
+			memcpy(&bufferTime,&(__HAL_TIM_GET_COUNTER(&htim3)),sizeof(uint16_t));
+			memcpy(&pulseBuffer,&count,sizeof(int16_t));
+//			pulseBuffer = pulseBuffer>>1; // Teste de apenas 1 canal
+			pulseBuffer = pulseBuffer>>2; // aplicação
+//			HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+//			actual = pulseBuffer - previous;
+//			previous = pulseBuffer;
+
+
+
 
 			bufferTime = bufferTime/10;
 			edgeTime = bufferTime + edgeTime;
@@ -215,11 +231,12 @@ void acquisition(void)
 			currentTime[samples] = edgeTime;
 			samples++;
 
-			if(samples == 10)
+			if(samples == AMOSTRA)
 			{
 				samples = 0;
 				readState = TRANSMISSAO;
 			}
+
 		}
 
 
@@ -278,7 +295,6 @@ int main(void)
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
 HAL_Delay(500);
-//HAL_TIM_Encoder_Start_IT(&htim2, TIM_CHANNEL_ALL);
 HAL_UART_Receive_IT(&huart2, (uint8_t *)RXBuffer, 1);
 StateMachine = iddle;
 char reset_status;
@@ -292,6 +308,7 @@ char i=0;
 //StateMachine = Start;
 //readStatus = AUTO;
 //timeTotal = HZ_50;
+//timeTotal = HZ_1000;
 
   /* USER CODE END 2 */
 
@@ -470,11 +487,11 @@ void SystemClock_Config(void)
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV2;
+  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL12;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL6;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -524,7 +541,7 @@ static void MX_TIM2_Init(void)
   htim2.Init.Period = 65535;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  sConfig.EncoderMode = TIM_ENCODERMODE_TI1;
+  sConfig.EncoderMode = TIM_ENCODERMODE_TI12;
   sConfig.IC1Polarity = TIM_ICPOLARITY_RISING;
   sConfig.IC1Selection = TIM_ICSELECTION_DIRECTTI;
   sConfig.IC1Prescaler = TIM_ICPSC_DIV1;
@@ -679,7 +696,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(RESET_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 2, 0);
   HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 }
@@ -918,8 +935,6 @@ char StartDevice(char deviceFlag)
 char startEncoder;
 if(deviceFlag == 0)
 {
-//	startEncoder = HAL_TIM_Encoder_Start_IT(&htim2, TIM_CHANNEL_ALL);
-//	startEncoder = HAL_TIM_Encoder_Start_IT(&htim2, TIM_CHANNEL_1);
 	startEncoder = HAL_OK;
 	HAL_Delay(10);
 	//
@@ -1171,8 +1186,8 @@ static char stopEncoder;
 char contador = 0;
 if(deviceFlag == 1)
 {
-//	stopEncoder = HAL_TIM_Encoder_Stop_IT(&htim2, TIM_CHANNEL_ALL);
-	stopEncoder = HAL_TIM_Encoder_Stop_IT(&htim2, TIM_CHANNEL_1);
+//	stopEncoder = HAL_TIM_Encoder_Stop_IT(&htim2, TIM_CHANNEL_1);
+	stopEncoder = HAL_TIM_Encoder_Stop_IT(&htim2, TIM_CHANNEL_ALL);
 	timerEnable = HAL_TIM_Base_Stop_IT(&htim3);
 	deviceFlag = 0;
 }
@@ -1188,6 +1203,7 @@ if(stopEncoder == HAL_OK && timerEnable == HAL_OK)
 		currentTime[contador] = 0;
 		USB_FLAG = 0;
 	}
+	pulseBuffer = 0;
 	samples = 0;
 	return 0;
 }
@@ -1234,16 +1250,13 @@ return checksum;
 //Interrupções
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 {
+	if(htim->Instance == TIM2)
+	{
+		aux_count = __HAL_TIM_GET_COUNTER(&htim2);
+//		count = aux_count>>1;
+		count = aux_count;
+	}
 
-	direction = __HAL_TIM_IS_TIM_COUNTING_DOWN(&htim2);
-	if(direction == 0)
-	{
-		pulseCounter++;
-	}
-	else if (direction == 1)
-	{
-		pulseCounter--;
-	}
 
 }
 
